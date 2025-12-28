@@ -1,0 +1,249 @@
+<!--
+Game Name: Online Chess Arena
+Author: YOUR NAME
+License: MIT License
+You are allowed to use, modify, and monetize this game.
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+
+<title>Online Chess Arena – Play Free Chess</title>
+
+<!-- SEO (VERY IMPORTANT) -->
+<meta name="description" content="Play free online chess with AI. Undo moves, save games, and enjoy classic chess gameplay.">
+<meta name="keywords" content="online chess, free chess game, chess ai, play chess online">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Google Analytics (replace G-XXXXXXX later) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXX"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-XXXXXXX');
+</script>
+
+<style>
+body { background:#222; color:white; font-family:Arial; text-align:center; margin:0; }
+#board { 
+  display:grid; grid-template-columns:repeat(8,1fr);
+  width:320px; height:320px; margin:15px auto; border:4px solid #000;
+}
+.square {
+  display:flex; justify-content:center; align-items:center;
+  font-size:32px; cursor:pointer;
+}
+.white { background:#f0d9b5; }
+.black { background:#b58863; }
+.controls button { margin:5px; padding:6px 10px; }
+a { color:#4ea3ff; text-decoration:none; font-size:14px; }
+</style>
+</head>
+
+<body>
+
+<!-- TOP AD PLACEHOLDER -->
+<div style="margin:10px">
+<!-- Google AdSense TOP BANNER -->
+</div>
+
+<h2>♟️ Online Chess Arena</h2>
+
+<div id="board"></div>
+
+<div class="controls">
+<button onclick="undo()">Undo</button>
+<button onclick="redo()">Redo</button>
+<button onclick="saveGame()">Save</button>
+<button onclick="loadGame()">Load</button>
+<button onclick="toggleAI()">Toggle AI</button>
+</div>
+
+<p id="status"></p>
+
+<!-- BOTTOM AD PLACEHOLDER -->
+<div style="margin:10px">
+<!-- Google AdSense FOOTER AD -->
+</div>
+
+<p>
+<a href="privacy.html" target="_blank">Privacy Policy</a>
+</p>
+
+<script>
+// ================== GAME STATE ==================
+const pieces = {
+ r:"♜", n:"♞", b:"♝", q:"♛", k:"♚", p:"♟",
+ R:"♖", N:"♘", B:"♗", Q:"♕", K:"♔", P:"♙"
+};
+
+let boardState = [
+["r","n","b","q","k","b","n","r"],
+["p","p","p","p","p","p","p","p"],
+["","","","","","","",""],
+["","","","","","","",""],
+["","","","","","","",""],
+["","","","","","","",""],
+["P","P","P","P","P","P","P","P"],
+["R","N","B","Q","K","B","N","R"]
+];
+
+let turn="white", selected=null;
+let history=[], redoStack=[];
+let aiEnabled=false;
+
+// ================== DRAW ==================
+const board=document.getElementById("board");
+function draw(){
+ board.innerHTML="";
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  let d=document.createElement("div");
+  d.className="square "+((r+c)%2?"black":"white");
+  d.textContent=pieces[boardState[r][c]]||"";
+  d.onclick=()=>clickSquare(r,c);
+  board.appendChild(d);
+ }
+}
+draw();
+
+// ================== HELPERS ==================
+const isWhite=p=>p&&p===p.toUpperCase();
+const isBlack=p=>p&&p===p.toLowerCase();
+
+// ================== MOVE VALIDATION ==================
+function validMove(sr,sc,tr,tc){
+ let p=boardState[sr][sc];
+ if(!p) return false;
+ if(turn==="white"&&!isWhite(p)) return false;
+ if(turn==="black"&&!isBlack(p)) return false;
+
+ let dr=tr-sr, dc=tc-sc;
+ let target=boardState[tr][tc];
+ if(target && ((isWhite(p)&&isWhite(target))||(isBlack(p)&&isBlack(target)))) return false;
+
+ switch(p.toLowerCase()){
+  case "p":
+   let dir=isWhite(p)?-1:1;
+   if(dc===0 && !target && dr===dir) return true;
+   if(dc===0 && !target && dr===2*dir && ((sr===6&&isWhite(p))||(sr===1&&isBlack(p))) && !boardState[sr+dir][sc]) return true;
+   if(Math.abs(dc)===1 && dr===dir && target) return true;
+   break;
+  case "r":
+   if(sr===tr||sc===tc) return clearPath(sr,sc,tr,tc);
+   break;
+  case "b":
+   if(Math.abs(dr)===Math.abs(dc)) return clearPath(sr,sc,tr,tc);
+   break;
+  case "q":
+   if(sr===tr||sc===tc||Math.abs(dr)===Math.abs(dc)) return clearPath(sr,sc,tr,tc);
+   break;
+  case "n":
+   if((Math.abs(dr)===2&&Math.abs(dc)===1)||(Math.abs(dr)===1&&Math.abs(dc)===2)) return true;
+   break;
+  case "k":
+   if(Math.abs(dr)<=1&&Math.abs(dc)<=1) return true;
+ }
+ return false;
+}
+
+function clearPath(sr,sc,tr,tc){
+ let dr=Math.sign(tr-sr), dc=Math.sign(tc-sc);
+ sr+=dr; sc+=dc;
+ while(sr!==tr||sc!==tc){
+  if(boardState[sr][sc]) return false;
+  sr+=dr; sc+=dc;
+ }
+ return true;
+}
+
+// ================== CLICK ==================
+function clickSquare(r,c){
+ if(selected){
+  if(validMove(selected.r,selected.c,r,c)){
+   move(selected.r,selected.c,r,c);
+  }
+  selected=null;
+ } else {
+  let p=boardState[r][c];
+  if(p&&(turn==="white"?isWhite(p):isBlack(p))){
+   selected={r,c};
+  }
+ }
+ draw();
+ status();
+ if(aiEnabled && turn==="black") setTimeout(aiMove,300);
+}
+
+// ================== MOVE ==================
+function move(sr,sc,tr,tc){
+ history.push(JSON.stringify(boardState));
+ redoStack=[];
+ boardState[tr][tc]=boardState[sr][sc];
+ boardState[sr][sc]="";
+
+ // Pawn promotion
+ if(tr===0&&boardState[tr][tc]==="P") boardState[tr][tc]="Q";
+ if(tr===7&&boardState[tr][tc]==="p") boardState[tr][tc]="q";
+
+ turn=turn==="white"?"black":"white";
+}
+
+// ================== UNDO / REDO ==================
+function undo(){
+ if(history.length){
+  redoStack.push(JSON.stringify(boardState));
+  boardState=JSON.parse(history.pop());
+  turn=turn==="white"?"black":"white";
+  draw();
+ }
+}
+function redo(){
+ if(redoStack.length){
+  history.push(JSON.stringify(boardState));
+  boardState=JSON.parse(redoStack.pop());
+  turn=turn==="white"?"black":"white";
+  draw();
+ }
+}
+
+// ================== AI ==================
+function aiMove(){
+ let moves=[];
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  if(isBlack(boardState[r][c])){
+   for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
+    if(validMove(r,c,tr,tc)) moves.push({r,c,tr,tc});
+   }
+  }
+ }
+ if(moves.length){
+  let m=moves[Math.floor(Math.random()*moves.length)];
+  move(m.r,m.c,m.tr,m.tc);
+  draw();
+ }
+}
+
+function toggleAI(){ aiEnabled=!aiEnabled; }
+
+// ================== SAVE ==================
+function saveGame(){
+ localStorage.setItem("chessSave",JSON.stringify({boardState,turn}));
+ alert("Game Saved");
+}
+function loadGame(){
+ let d=JSON.parse(localStorage.getItem("chessSave"));
+ if(d){ boardState=d.boardState; turn=d.turn; draw(); }
+}
+
+// ================== STATUS ==================
+function status(){
+ document.getElementById("status").textContent="Turn: "+turn;
+}
+status();
+</script>
+
+</body>
+</html>
